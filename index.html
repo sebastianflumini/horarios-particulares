@@ -1,0 +1,849 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="theme-color" content="#2f6fed">
+<link rel="manifest" href="manifest.json">
+<link rel="apple-touch-icon" href="icon-192.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="Horarios">
+<title>Horarios Particulares</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js"></script>
+<style>
+  :root{
+    --bg:#f5f6fa; --panel:#ffffff; --ink:#262b3a; --muted:#6b7280;
+    --accent:#2f6fed; --accent-dark:#1f4fbf; --border:#e3e5ea;
+    --empty:#fafafa; --individual-bg:#d9f4e3; --individual-fg:#1c6b3c;
+    --doble-bg:#dbe9ff; --doble-fg:#1e4fa3; --triple-bg:#f1ddff; --triple-fg:#6a1ea3;
+  }
+  *{box-sizing:border-box;}
+  body{margin:0;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial,sans-serif;background:var(--bg);color:var(--ink);}
+  header{background:var(--panel);border-bottom:1px solid var(--border);padding:14px 20px;display:flex;flex-wrap:wrap;align-items:center;gap:14px;position:sticky;top:0;z-index:20;}
+  header h1{font-size:18px;margin:0;font-weight:700;white-space:nowrap;}
+  .month-nav{display:flex;align-items:center;gap:8px;}
+  .month-nav button{width:32px;height:32px;border-radius:8px;border:1px solid var(--border);background:#fff;cursor:pointer;font-size:15px;}
+  .month-nav button:hover{background:#eef2ff;}
+  .month-label{font-weight:600;min-width:150px;text-align:center;}
+  .today-btn{border:1px solid var(--border);background:#fff;border-radius:8px;padding:6px 10px;cursor:pointer;font-size:13px;}
+  .spacer{flex:1;}
+  .actions{display:flex;gap:8px;flex-wrap:wrap;}
+  .btn{border:none;border-radius:8px;padding:8px 14px;font-size:13px;font-weight:600;cursor:pointer;}
+  .btn-primary{background:var(--accent);color:#fff;}
+  .btn-primary:hover{background:var(--accent-dark);}
+  .btn-secondary{background:#fff;border:1px solid var(--border);color:var(--ink);}
+  .btn-secondary:hover{background:#eef0f5;}
+  main{padding:18px 20px 60px;max-width:1400px;margin:0 auto;}
+  .stats{display:flex;gap:12px;margin-bottom:16px;flex-wrap:wrap;}
+  .stat-card{background:var(--panel);border:1px solid var(--border);border-radius:10px;padding:10px 16px;min-width:160px;}
+  .stat-card .label{font-size:12px;color:var(--muted);}
+  .stat-card .value{font-size:20px;font-weight:700;}
+  .panel{background:var(--panel);border:1px solid var(--border);border-radius:12px;padding:16px;margin-bottom:20px;overflow:auto;}
+  .panel h2{font-size:15px;margin:0 0 12px;}
+  table.grid{border-collapse:collapse;width:100%;font-size:13px;}
+  table.grid th, table.grid td{border:1px solid var(--border);padding:6px 8px;text-align:center;white-space:nowrap;}
+  table.grid thead th{background:#f0f2f7;position:sticky;top:0;font-weight:600;}
+  table.grid .hour-col{position:sticky;left:0;background:#f0f2f7;font-weight:600;z-index:5;}
+  td.slot{cursor:pointer;min-width:90px;font-size:12px;transition:filter .1s;}
+  td.slot:hover{filter:brightness(0.96);}
+  td.slot.empty{background:var(--empty);color:#c7c9d1;}
+  td.slot.empty:hover{background:#eef0f5;}
+  td.slot.individual{background:var(--individual-bg);color:var(--individual-fg);font-weight:600;}
+  td.slot.doble{background:var(--doble-bg);color:var(--doble-fg);font-weight:600;}
+  td.slot.triple{background:var(--triple-bg);color:var(--triple-fg);font-weight:600;}
+  .legend{display:flex;gap:16px;margin-top:10px;font-size:12px;color:var(--muted);flex-wrap:wrap;}
+  .legend span{display:inline-flex;align-items:center;gap:6px;}
+  .swatch{width:12px;height:12px;border-radius:3px;display:inline-block;}
+  table.pay-table{border-collapse:collapse;width:100%;font-size:13px;}
+  table.pay-table th, table.pay-table td{border:1px solid var(--border);padding:8px 10px;text-align:left;}
+  table.pay-table th{background:#f0f2f7;}
+  table.pay-table td:not(:first-child), table.pay-table th:not(:first-child){text-align:right;}
+  table.pay-table tfoot td{font-weight:700;background:#f7f8fc;}
+  .footer-links{display:flex;justify-content:center;gap:18px;margin-top:10px;font-size:12px;color:var(--muted);}
+  .footer-links a{color:var(--accent);cursor:pointer;text-decoration:none;}
+  .footer-links a:hover{text-decoration:underline;}
+  .modal-overlay{position:fixed;inset:0;background:rgba(20,22,30,.45);display:none;align-items:center;justify-content:center;z-index:100;padding:20px;}
+  .modal-overlay.open{display:flex;}
+  .modal-box{background:#fff;border-radius:12px;padding:22px;max-width:560px;width:100%;max-height:85vh;overflow:auto;}
+  .modal-box h3{margin:0 0 14px;font-size:16px;}
+  .modal-box .close-x{position:absolute;top:14px;right:18px;cursor:pointer;color:var(--muted);font-size:18px;}
+  .modal-box{position:relative;}
+  .student-check-row{display:flex;align-items:center;gap:10px;padding:8px 4px;border-bottom:1px solid var(--border);}
+  .student-check-row label{flex:1;cursor:pointer;}
+  .student-check-row .rates{font-size:11px;color:var(--muted);}
+  .modal-actions{display:flex;justify-content:flex-end;gap:10px;margin-top:16px;}
+  .hint{font-size:12px;color:var(--muted);margin:6px 0 12px;}
+  .inline-add{margin-top:10px;padding:10px;background:#f7f8fc;border-radius:8px;}
+  .inline-add input{width:100%;margin-bottom:6px;padding:6px 8px;border:1px solid var(--border);border-radius:6px;font-size:13px;}
+  .inline-add .row3{display:flex;gap:6px;}
+  .inline-add .row3 input{width:33%;}
+  .link-toggle{font-size:12px;color:var(--accent);cursor:pointer;display:inline-block;margin-top:6px;}
+  table.students-table{width:100%;border-collapse:collapse;font-size:13px;margin-bottom:14px;}
+  table.students-table th, table.students-table td{padding:6px;border-bottom:1px solid var(--border);}
+  table.students-table input{width:100%;padding:5px 6px;border:1px solid var(--border);border-radius:6px;font-size:13px;}
+  table.students-table input.name{min-width:90px;}
+  table.students-table input.rate{width:80px;}
+  .del-btn{color:#c0392b;cursor:pointer;background:none;border:none;font-size:13px;}
+  .save-note{font-size:11px;color:var(--muted);text-align:right;margin-top:4px;}
+  #fileImportInput{display:none;}
+
+  /* ---- responsive: mobile day view ---- */
+  .only-mobile{display:none;}
+  .day-nav{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:10px;}
+  .day-nav-btn{width:42px;height:42px;border-radius:10px;border:1px solid var(--border);background:#fff;font-size:18px;cursor:pointer;}
+  .day-nav-label{flex:1;text-align:center;font-weight:700;font-size:15px;}
+  .day-list{display:flex;flex-direction:column;gap:8px;}
+  .day-row{display:flex;align-items:center;gap:10px;border-radius:10px;padding:12px 14px;min-height:44px;cursor:pointer;border:1px solid var(--border);}
+  .day-row.empty{background:var(--empty);color:#9aa0ab;}
+  .day-row.individual{background:var(--individual-bg);color:var(--individual-fg);}
+  .day-row.doble{background:var(--doble-bg);color:var(--doble-fg);}
+  .day-row.triple{background:var(--triple-bg);color:var(--triple-fg);}
+  .day-row-hour{font-weight:700;min-width:54px;}
+  .day-row-name{flex:1;font-weight:600;}
+  .day-row-type{font-size:12px;opacity:.8;}
+
+  @media (max-width: 700px){
+    .only-desktop{display:none !important;}
+    .only-mobile{display:block;}
+    header{padding:10px 14px;gap:10px;}
+    header h1{font-size:16px;}
+    main{padding:12px 14px 50px;}
+    .actions{width:100%;}
+    .actions .btn{flex:1;padding:11px 6px;font-size:13px;}
+    .stats{gap:8px;}
+    .stat-card{flex:1;min-width:0;padding:10px;}
+    .stat-card .value{font-size:16px;}
+    table.pay-table{font-size:12px;}
+    table.pay-table th, table.pay-table td{padding:6px 5px;}
+    .modal-box{padding:16px;max-height:90vh;}
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>📅 Horarios Particulares</h1>
+  <div class="month-nav">
+    <button id="prevMonth" class="only-desktop">◀</button>
+    <div class="month-label" id="monthLabel">-</div>
+    <button id="nextMonth" class="only-desktop">▶</button>
+  </div>
+  <button class="today-btn" id="todayBtn">Hoy</button>
+  <div class="spacer"></div>
+  <div class="actions">
+    <button class="btn btn-secondary" id="openStudents">👥 Alumnos</button>
+    <button class="btn btn-secondary" id="exportExcelBtn">⬇ Excel</button>
+    <button class="btn btn-secondary" id="exportPdfBtn">⬇ PDF</button>
+  </div>
+</header>
+
+<main>
+  <div class="stats">
+    <div class="stat-card"><div class="label">Horas ocupadas este mes</div><div class="value" id="statHoras">0</div></div>
+    <div class="stat-card"><div class="label">Total a cobrar este mes</div><div class="value" id="statMonto">$ 0</div></div>
+    <div class="stat-card"><div class="label">Alumnos registrados</div><div class="value" id="statAlumnos">0</div></div>
+  </div>
+
+  <div class="panel" id="gridPanel">
+    <h2>Horarios</h2>
+    <div class="hint only-mobile">Tip: para instalar esta app como ícono en tu celular, abrí el menú del navegador y elegí "Instalar app" o "Agregar a pantalla de inicio".</div>
+    <div class="hint only-mobile">Tip: al exportar Excel o PDF, vas a poder elegir "Compartir por WhatsApp" directamente.</div>
+    <div id="desktopGrid" class="only-desktop" style="overflow:auto;-webkit-overflow-scrolling:touch;"></div>
+    <div id="mobileDayView" class="only-mobile"></div>
+    <div class="legend">
+      <span><span class="swatch" style="background:var(--empty);border:1px solid var(--border);"></span>Libre</span>
+      <span><span class="swatch" style="background:var(--individual-bg);"></span>Individual</span>
+      <span><span class="swatch" style="background:var(--doble-bg);"></span>Doble</span>
+      <span><span class="swatch" style="background:var(--triple-bg);"></span>Triple</span>
+    </div>
+  </div>
+
+  <div class="panel" id="paymentPanel">
+    <h2>Tabla de pagos del mes</h2>
+    <div id="paymentContainer"></div>
+  </div>
+
+  <div class="footer-links">
+    <a id="backupExport">Descargar copia de seguridad</a>
+    <a id="backupImport">Restaurar copia de seguridad</a>
+  </div>
+  <input type="file" id="fileImportInput" accept="application/json">
+</main>
+
+<!-- Slot editor modal -->
+<div class="modal-overlay" id="slotModalOverlay">
+  <div class="modal-box">
+    <span class="close-x" data-close="slotModalOverlay">✕</span>
+    <h3 id="slotModalTitle">Horario</h3>
+    <div class="hint">Seleccioná hasta 3 alumnos. 1 = individual, 2 = doble, 3 = triple.</div>
+    <div id="slotStudentList"></div>
+    <div class="link-toggle" id="toggleInlineAdd">+ Agregar alumno nuevo</div>
+    <div class="inline-add" id="inlineAddBox" style="display:none;">
+      <input type="text" id="newStudentName" placeholder="Nombre del alumno">
+      <div class="row3">
+        <input type="number" id="newStudentIndividual" placeholder="$ Individual">
+        <input type="number" id="newStudentDoble" placeholder="$ Doble">
+        <input type="number" id="newStudentTriple" placeholder="$ Triple">
+      </div>
+      <button class="btn btn-secondary" id="confirmAddStudent" style="margin-top:4px;">Agregar y seleccionar</button>
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-secondary" id="clearSlotBtn">Vaciar horario</button>
+      <button class="btn btn-primary" id="saveSlotBtn">Guardar</button>
+    </div>
+  </div>
+</div>
+
+<!-- Students modal -->
+<div class="modal-overlay" id="studentsModalOverlay">
+  <div class="modal-box" style="max-width:680px;">
+    <span class="close-x" data-close="studentsModalOverlay">✕</span>
+    <h3>Alumnos y tarifas por hora</h3>
+    <div class="hint">Editá nombre y tarifas en cualquier momento. Los cambios se guardan automáticamente.</div>
+    <table class="students-table" id="studentsTable">
+      <thead><tr><th>Nombre</th><th>$ Individual</th><th>$ Doble</th><th>$ Triple</th><th></th></tr></thead>
+      <tbody id="studentsTableBody"></tbody>
+    </table>
+    <button class="btn btn-secondary" id="addStudentRowBtn">+ Agregar alumno</button>
+    <div class="modal-actions">
+      <button class="btn btn-primary" data-close="studentsModalOverlay">Listo</button>
+    </div>
+  </div>
+</div>
+
+<script>
+(function(){
+  "use strict";
+
+  var STORAGE_KEY = "horariosParticularesApp_v1";
+  var HOURS = [7,8,9,10,11,12,13,14,15,16,17];
+  var DOW_SHORT = ["Dom","Lun","Mar","Mié","Jue","Vie","Sáb"];
+  var DOW_LONG = ["Domingo","Lunes","Martes","Miércoles","Jueves","Viernes","Sábado"];
+  var MONTH_NAMES = ["Enero","Febrero","Marzo","Abril","Mayo","Junio","Julio","Agosto","Septiembre","Octubre","Noviembre","Diciembre"];
+
+  var defaultData = {
+    students: [
+      {id:"s1", name:"Carlos", individual:1200, doble:1000, triple:900},
+      {id:"s2", name:"Pedro",  individual:1100, doble:900,  triple:700},
+      {id:"s3", name:"Juan",   individual:1000, doble:800,  triple:650},
+      {id:"s4", name:"Jose",   individual:1500, doble:1300, triple:1100},
+      {id:"s5", name:"Anibal", individual:1200, doble:1100, triple:900}
+    ],
+    months: {}
+  };
+
+  var appData = loadData();
+  var today = new Date();
+  var currentYear = today.getFullYear();
+  var currentMonth = today.getMonth() + 1; // 1-based
+  var currentDay = isWeekday(today) ? new Date(today) : shiftDay(today, 1); // function declarations are hoisted
+  var currentEditDate = null;
+  var currentEditHour = null;
+  var currentEditSelection = [];
+
+  // ---------- persistence ----------
+  function loadData(){
+    try{
+      var raw = localStorage.getItem(STORAGE_KEY);
+      if(!raw) return JSON.parse(JSON.stringify(defaultData));
+      var parsed = JSON.parse(raw);
+      if(!parsed.students || !parsed.months) return JSON.parse(JSON.stringify(defaultData));
+      return parsed;
+    }catch(e){
+      return JSON.parse(JSON.stringify(defaultData));
+    }
+  }
+  function saveData(){
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(appData));
+  }
+
+  // ---------- helpers ----------
+  function pad2(n){ return n.toString().padStart(2,"0"); }
+  function monthKeyOf(year, month){ return year + "-" + pad2(month); }
+  function fmtDate(d){ return d.getFullYear() + "-" + pad2(d.getMonth()+1) + "-" + pad2(d.getDate()); }
+  function getWeekdaysInMonth(year, month){
+    var dates = [];
+    var d = new Date(year, month-1, 1);
+    while(d.getMonth() === month-1){
+      var dow = d.getDay();
+      if(dow >= 1 && dow <= 5) dates.push(new Date(d));
+      d.setDate(d.getDate()+1);
+    }
+    return dates;
+  }
+  function studentName(id){
+    var s = appData.students.find(function(x){ return x.id === id; });
+    return s ? s.name : "(eliminado)";
+  }
+  function getStudent(id){
+    return appData.students.find(function(x){ return x.id === id; });
+  }
+  function ensureMonth(monthKey){
+    if(!appData.months[monthKey]) appData.months[monthKey] = {slots:{}};
+    return appData.months[monthKey];
+  }
+  function formatMoney(n){
+    return "$ " + Math.round(n).toLocaleString("es-UY");
+  }
+  function newId(){
+    return "s" + Date.now().toString(36) + Math.random().toString(36).slice(2,6);
+  }
+
+  // ---------- totals / payments ----------
+  function computeTotals(monthKey){
+    var monthData = appData.months[monthKey] || {slots:{}};
+    var totals = {};
+    Object.keys(monthData.slots).forEach(function(key){
+      var ids = monthData.slots[key];
+      if(!ids || ids.length === 0) return;
+      var type = ids.length === 1 ? "individual" : (ids.length === 2 ? "doble" : "triple");
+      ids.forEach(function(id){
+        if(!totals[id]) totals[id] = {individual:0, doble:0, triple:0};
+        totals[id][type]++;
+      });
+    });
+    return totals;
+  }
+
+  // ---------- rendering: grid ----------
+  function renderGrid(){
+    var dates = getWeekdaysInMonth(currentYear, currentMonth);
+    var monthKey = monthKeyOf(currentYear, currentMonth);
+    var monthData = appData.months[monthKey] || {slots:{}};
+
+    var html = '<table class="grid"><thead><tr><th class="hour-col">Hora</th>';
+    dates.forEach(function(d){
+      html += '<th>' + DOW_SHORT[d.getDay()] + '<br>' + d.getDate() + '</th>';
+    });
+    html += '</tr></thead><tbody>';
+
+    HOURS.forEach(function(hour){
+      html += '<tr><td class="hour-col">' + hour + ':00</td>';
+      dates.forEach(function(d){
+        var dateStr = fmtDate(d);
+        var key = dateStr + "_" + hour;
+        var ids = monthData.slots[key] || [];
+        var n = ids.length;
+        var cls = n === 0 ? "empty" : (n === 1 ? "individual" : (n === 2 ? "doble" : "triple"));
+        var names = ids.map(studentName).join(" + ");
+        html += '<td class="slot ' + cls + '" data-date="' + dateStr + '" data-hour="' + hour + '">' + (names || "") + '</td>';
+      });
+      html += '</tr>';
+    });
+    html += '</tbody></table>';
+    document.getElementById("desktopGrid").innerHTML = html;
+  }
+
+  // ---------- rendering: mobile day view ----------
+  function isWeekday(d){ var dow = d.getDay(); return dow >= 1 && dow <= 5; }
+  function shiftDay(date, delta){
+    var d = new Date(date);
+    do{ d.setDate(d.getDate() + delta); } while(!isWeekday(d));
+    return d;
+  }
+  function firstWeekdayOf(year, month){
+    var d = new Date(year, month-1, 1);
+    while(!isWeekday(d)) d.setDate(d.getDate()+1);
+    return d;
+  }
+  function syncMonthFromDay(){
+    currentYear = currentDay.getFullYear();
+    currentMonth = currentDay.getMonth() + 1;
+  }
+
+  function renderDayView(){
+    var label = DOW_LONG[currentDay.getDay()] + " " + currentDay.getDate() + " de " + MONTH_NAMES[currentDay.getMonth()] + " de " + currentDay.getFullYear();
+    var dateStr = fmtDate(currentDay);
+    var monthKey = monthKeyOf(currentDay.getFullYear(), currentDay.getMonth()+1);
+    var monthData = appData.months[monthKey] || {slots:{}};
+
+    var html = '<div class="day-nav">' +
+      '<button id="prevDayBtn" class="day-nav-btn">◀</button>' +
+      '<div class="day-nav-label">' + label + '</div>' +
+      '<button id="nextDayBtn" class="day-nav-btn">▶</button>' +
+      '</div><div class="day-list">';
+
+    HOURS.forEach(function(hour){
+      var key = dateStr + "_" + hour;
+      var ids = monthData.slots[key] || [];
+      var n = ids.length;
+      var cls = n === 0 ? "empty" : (n === 1 ? "individual" : (n === 2 ? "doble" : "triple"));
+      var names = ids.map(studentName).join(" + ");
+      var tipoLabel = n === 0 ? "Libre" : (n === 1 ? "Individual" : (n === 2 ? "Doble" : "Triple"));
+      html += '<div class="day-row ' + cls + '" data-date="' + dateStr + '" data-hour="' + hour + '">' +
+        '<span class="day-row-hour">' + hour + ':00</span>' +
+        '<span class="day-row-name">' + (names || "Libre") + '</span>' +
+        '<span class="day-row-type">' + tipoLabel + '</span>' +
+        '</div>';
+    });
+    html += '</div>';
+
+    var container = document.getElementById("mobileDayView");
+    container.innerHTML = html;
+    document.getElementById("prevDayBtn").addEventListener("click", function(){
+      currentDay = shiftDay(currentDay, -1);
+      syncMonthFromDay();
+      renderAll();
+    });
+    document.getElementById("nextDayBtn").addEventListener("click", function(){
+      currentDay = shiftDay(currentDay, 1);
+      syncMonthFromDay();
+      renderAll();
+    });
+    container.querySelectorAll(".day-row").forEach(function(row){
+      row.addEventListener("click", function(){
+        openSlotEditor(row.getAttribute("data-date"), parseInt(row.getAttribute("data-hour"), 10));
+      });
+    });
+  }
+
+  // ---------- rendering: payment table ----------
+  function renderPaymentTable(){
+    var monthKey = monthKeyOf(currentYear, currentMonth);
+    var totals = computeTotals(monthKey);
+    var grandTotal = 0;
+    var totalHorasMes = 0;
+
+    var html = '<table class="pay-table"><thead><tr>' +
+      '<th>Alumno</th><th>Horas individuales</th><th>Horas dobles</th><th>Horas triples</th><th>Total horas</th><th>Monto a pagar</th>' +
+      '</tr></thead><tbody>';
+
+    appData.students.forEach(function(s){
+      var t = totals[s.id] || {individual:0, doble:0, triple:0};
+      var totalHoras = t.individual + t.doble + t.triple;
+      var monto = t.individual*s.individual + t.doble*s.doble + t.triple*s.triple;
+      grandTotal += monto;
+      totalHorasMes += totalHoras;
+      html += '<tr><td>' + s.name + '</td><td>' + t.individual + '</td><td>' + t.doble + '</td><td>' + t.triple + '</td><td>' + totalHoras + '</td><td>' + formatMoney(monto) + '</td></tr>';
+    });
+    html += '</tbody><tfoot><tr><td colspan="5">TOTAL</td><td>' + formatMoney(grandTotal) + '</td></tr></tfoot></table>';
+    document.getElementById("paymentContainer").innerHTML = html;
+
+    document.getElementById("statHoras").textContent = totalHorasMes;
+    document.getElementById("statMonto").textContent = formatMoney(grandTotal);
+    document.getElementById("statAlumnos").textContent = appData.students.length;
+  }
+
+  function renderMonthLabel(){
+    document.getElementById("monthLabel").textContent = MONTH_NAMES[currentMonth-1] + " " + currentYear;
+  }
+
+  function renderAll(){
+    renderMonthLabel();
+    renderGrid();
+    renderDayView();
+    renderPaymentTable();
+  }
+
+  // ---------- month navigation ----------
+  document.getElementById("prevMonth").addEventListener("click", function(){
+    currentMonth--;
+    if(currentMonth < 1){ currentMonth = 12; currentYear--; }
+    currentDay = firstWeekdayOf(currentYear, currentMonth);
+    renderAll();
+  });
+  document.getElementById("nextMonth").addEventListener("click", function(){
+    currentMonth++;
+    if(currentMonth > 12){ currentMonth = 1; currentYear++; }
+    currentDay = firstWeekdayOf(currentYear, currentMonth);
+    renderAll();
+  });
+  document.getElementById("todayBtn").addEventListener("click", function(){
+    var t = new Date();
+    currentYear = t.getFullYear();
+    currentMonth = t.getMonth()+1;
+    currentDay = isWeekday(t) ? new Date(t) : shiftDay(t, 1);
+    renderAll();
+  });
+
+  // ---------- slot modal ----------
+  var slotOverlay = document.getElementById("slotModalOverlay");
+  document.getElementById("desktopGrid").addEventListener("click", function(e){
+    var td = e.target.closest("td.slot");
+    if(!td) return;
+    openSlotEditor(td.getAttribute("data-date"), parseInt(td.getAttribute("data-hour"), 10));
+  });
+
+  function openSlotEditor(dateStr, hour){
+    currentEditDate = dateStr;
+    currentEditHour = hour;
+    var parts = dateStr.split("-").map(Number);
+    var d = new Date(parts[0], parts[1]-1, parts[2]);
+    document.getElementById("slotModalTitle").textContent =
+      DOW_LONG[d.getDay()] + " " + d.getDate() + " de " + MONTH_NAMES[d.getMonth()] + " — " + hour + ":00";
+
+    var monthKey = monthKeyOf(parts[0], parts[1]);
+    var monthData = ensureMonth(monthKey);
+    var key = dateStr + "_" + hour;
+    currentEditSelection = (monthData.slots[key] || []).slice();
+
+    renderSlotStudentList();
+    document.getElementById("inlineAddBox").style.display = "none";
+    document.getElementById("newStudentName").value = "";
+    document.getElementById("newStudentIndividual").value = "";
+    document.getElementById("newStudentDoble").value = "";
+    document.getElementById("newStudentTriple").value = "";
+    slotOverlay.classList.add("open");
+  }
+
+  function renderSlotStudentList(){
+    var html = "";
+    appData.students.forEach(function(s){
+      var checked = currentEditSelection.indexOf(s.id) !== -1 ? "checked" : "";
+      html += '<div class="student-check-row">' +
+        '<input type="checkbox" data-id="' + s.id + '" ' + checked + '>' +
+        '<label data-id-label="' + s.id + '">' + s.name + '</label>' +
+        '<span class="rates">Ind $' + s.individual + ' · Dob $' + s.doble + ' · Tri $' + s.triple + '</span>' +
+        '</div>';
+    });
+    if(appData.students.length === 0){
+      html = '<div class="hint">No hay alumnos cargados todavía. Agregá uno abajo.</div>';
+    }
+    var container = document.getElementById("slotStudentList");
+    container.innerHTML = html;
+    container.querySelectorAll('input[type="checkbox"]').forEach(function(cb){
+      cb.addEventListener("change", function(){
+        var id = cb.getAttribute("data-id");
+        if(cb.checked){
+          if(currentEditSelection.length >= 3){
+            cb.checked = false;
+            alert("Máximo 3 alumnos por horario (clase triple).");
+            return;
+          }
+          currentEditSelection.push(id);
+        }else{
+          currentEditSelection = currentEditSelection.filter(function(x){ return x !== id; });
+        }
+      });
+    });
+  }
+
+  document.getElementById("toggleInlineAdd").addEventListener("click", function(){
+    var box = document.getElementById("inlineAddBox");
+    box.style.display = box.style.display === "none" ? "block" : "none";
+  });
+
+  document.getElementById("confirmAddStudent").addEventListener("click", function(){
+    var name = document.getElementById("newStudentName").value.trim();
+    var ind = parseFloat(document.getElementById("newStudentIndividual").value) || 0;
+    var dob = parseFloat(document.getElementById("newStudentDoble").value) || 0;
+    var tri = parseFloat(document.getElementById("newStudentTriple").value) || 0;
+    if(!name){ alert("Ingresá el nombre del alumno."); return; }
+    var id = newId();
+    appData.students.push({id:id, name:name, individual:ind, doble:dob, triple:tri});
+    saveData();
+    if(currentEditSelection.length < 3) currentEditSelection.push(id);
+    renderSlotStudentList();
+    document.getElementById("inlineAddBox").style.display = "none";
+    document.getElementById("newStudentName").value = "";
+    document.getElementById("newStudentIndividual").value = "";
+    document.getElementById("newStudentDoble").value = "";
+    document.getElementById("newStudentTriple").value = "";
+  });
+
+  document.getElementById("clearSlotBtn").addEventListener("click", function(){
+    currentEditSelection = [];
+    var monthKey = monthKeyOf(parseInt(currentEditDate.split("-")[0],10), parseInt(currentEditDate.split("-")[1],10));
+    var monthData = ensureMonth(monthKey);
+    delete monthData.slots[currentEditDate + "_" + currentEditHour];
+    saveData();
+    renderGrid();
+    renderPaymentTable();
+    slotOverlay.classList.remove("open");
+  });
+
+  document.getElementById("saveSlotBtn").addEventListener("click", function(){
+    var parts = currentEditDate.split("-").map(Number);
+    var monthKey = monthKeyOf(parts[0], parts[1]);
+    var monthData = ensureMonth(monthKey);
+    var key = currentEditDate + "_" + currentEditHour;
+    if(currentEditSelection.length === 0){
+      delete monthData.slots[key];
+    }else{
+      monthData.slots[key] = currentEditSelection.slice();
+    }
+    saveData();
+    renderGrid();
+    renderPaymentTable();
+    slotOverlay.classList.remove("open");
+  });
+
+  // ---------- students modal ----------
+  var studentsOverlay = document.getElementById("studentsModalOverlay");
+  document.getElementById("openStudents").addEventListener("click", function(){
+    renderStudentsTable();
+    studentsOverlay.classList.add("open");
+  });
+
+  function renderStudentsTable(){
+    var tbody = document.getElementById("studentsTableBody");
+    tbody.innerHTML = "";
+    appData.students.forEach(function(s){
+      var tr = document.createElement("tr");
+      tr.innerHTML =
+        '<td><input class="name" type="text" value="' + escapeHtml(s.name) + '"></td>' +
+        '<td><input class="rate" type="number" value="' + s.individual + '"></td>' +
+        '<td><input class="rate" type="number" value="' + s.doble + '"></td>' +
+        '<td><input class="rate" type="number" value="' + s.triple + '"></td>' +
+        '<td><button class="del-btn">Eliminar</button></td>';
+      var inputs = tr.querySelectorAll("input");
+      inputs[0].addEventListener("input", function(){ s.name = inputs[0].value; saveData(); renderGrid(); renderPaymentTable(); });
+      inputs[1].addEventListener("input", function(){ s.individual = parseFloat(inputs[1].value)||0; saveData(); renderPaymentTable(); });
+      inputs[2].addEventListener("input", function(){ s.doble = parseFloat(inputs[2].value)||0; saveData(); renderPaymentTable(); });
+      inputs[3].addEventListener("input", function(){ s.triple = parseFloat(inputs[3].value)||0; saveData(); renderPaymentTable(); });
+      tr.querySelector(".del-btn").addEventListener("click", function(){
+        if(confirm("¿Eliminar a " + s.name + "? Los horarios ya asignados a este alumno quedarán sin nombre.")){
+          appData.students = appData.students.filter(function(x){ return x.id !== s.id; });
+          saveData();
+          renderStudentsTable();
+          renderGrid();
+          renderPaymentTable();
+        }
+      });
+      tbody.appendChild(tr);
+    });
+  }
+
+  function escapeHtml(str){
+    var div = document.createElement("div");
+    div.textContent = str;
+    return div.innerHTML;
+  }
+
+  document.getElementById("addStudentRowBtn").addEventListener("click", function(){
+    appData.students.push({id:newId(), name:"Nuevo alumno", individual:0, doble:0, triple:0});
+    saveData();
+    renderStudentsTable();
+    renderPaymentTable();
+  });
+
+  // ---------- modal close ----------
+  document.querySelectorAll("[data-close]").forEach(function(el){
+    el.addEventListener("click", function(){
+      document.getElementById(el.getAttribute("data-close")).classList.remove("open");
+    });
+  });
+  document.querySelectorAll(".modal-overlay").forEach(function(ov){
+    ov.addEventListener("click", function(e){
+      if(e.target === ov) ov.classList.remove("open");
+    });
+  });
+
+  // ---------- share or download (enables "share to WhatsApp" on mobile) ----------
+  function shareOrDownloadFile(blob, filename, mime, title){
+    try{
+      var file = new File([blob], filename, {type: mime});
+      if(navigator.canShare && navigator.share && navigator.canShare({files:[file]})){
+        navigator.share({files:[file], title: title}).catch(function(){ /* user cancelled, ignore */ });
+        return;
+      }
+    }catch(e){ /* fall through to plain download below */ }
+    var url = URL.createObjectURL(blob);
+    var a = document.createElement("a");
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  }
+
+  // ---------- export: Excel ----------
+  function buildScheduleAOA(){
+    var dates = getWeekdaysInMonth(currentYear, currentMonth);
+    var monthKey = monthKeyOf(currentYear, currentMonth);
+    var monthData = appData.months[monthKey] || {slots:{}};
+    var header = ["Hora"];
+    dates.forEach(function(d){ header.push(DOW_SHORT[d.getDay()] + " " + d.getDate()); });
+    var rows = [header];
+    HOURS.forEach(function(hour){
+      var row = [hour + ":00"];
+      dates.forEach(function(d){
+        var key = fmtDate(d) + "_" + hour;
+        var ids = monthData.slots[key] || [];
+        row.push(cellText(ids));
+      });
+      rows.push(row);
+    });
+    return rows;
+  }
+  function cellText(ids){
+    if(ids.length === 0) return "";
+    var names = ids.map(studentName).join(" + ");
+    if(ids.length === 2) return "[Doble] " + names;
+    if(ids.length === 3) return "[Triple] " + names;
+    return names;
+  }
+  function buildPaymentAOA(){
+    var monthKey = monthKeyOf(currentYear, currentMonth);
+    var totals = computeTotals(monthKey);
+    var rows = [["Alumno","Horas individuales","Horas dobles","Horas triples","Total horas","Tarifa individual","Tarifa doble","Tarifa triple","Monto a pagar"]];
+    var grandTotal = 0;
+    appData.students.forEach(function(s){
+      var t = totals[s.id] || {individual:0, doble:0, triple:0};
+      var totalHoras = t.individual + t.doble + t.triple;
+      var monto = t.individual*s.individual + t.doble*s.doble + t.triple*s.triple;
+      grandTotal += monto;
+      rows.push([s.name, t.individual, t.doble, t.triple, totalHoras, s.individual, s.doble, s.triple, monto]);
+    });
+    rows.push(["TOTAL","","","","","","","", grandTotal]);
+    return rows;
+  }
+
+  document.getElementById("exportExcelBtn").addEventListener("click", function(){
+    var monthKey = monthKeyOf(currentYear, currentMonth);
+    var dates = getWeekdaysInMonth(currentYear, currentMonth);
+    var wb = XLSX.utils.book_new();
+
+    var ws1 = XLSX.utils.aoa_to_sheet(buildScheduleAOA());
+    var cols1 = [{wch:8}];
+    dates.forEach(function(){ cols1.push({wch:18}); });
+    ws1["!cols"] = cols1;
+    XLSX.utils.book_append_sheet(wb, ws1, "Horarios");
+
+    var ws2 = XLSX.utils.aoa_to_sheet(buildPaymentAOA());
+    ws2["!cols"] = [{wch:16},{wch:16},{wch:14},{wch:14},{wch:12},{wch:14},{wch:12},{wch:12},{wch:14}];
+    XLSX.utils.book_append_sheet(wb, ws2, "Pagos");
+
+    var wbout = XLSX.write(wb, {bookType:"xlsx", type:"array"});
+    var blob = new Blob([wbout], {type:"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"});
+    shareOrDownloadFile(blob, "Horarios_" + monthKey + ".xlsx", blob.type, "Horarios " + MONTH_NAMES[currentMonth-1] + " " + currentYear);
+  });
+
+  // ---------- export: PDF ----------
+  document.getElementById("exportPdfBtn").addEventListener("click", function(){
+    var jsPDFCtor = window.jspdf.jsPDF;
+    var doc = new jsPDFCtor({orientation:"portrait", unit:"pt", format:"a4"});
+    var monthKey = monthKeyOf(currentYear, currentMonth);
+    var monthLabel = MONTH_NAMES[currentMonth-1] + " " + currentYear;
+
+    doc.setFontSize(16);
+    doc.text("Horarios y pagos - " + monthLabel, 40, 40);
+
+    var dates = getWeekdaysInMonth(currentYear, currentMonth);
+    var monthData = appData.months[monthKey] || {slots:{}};
+    var y = 65;
+    var any = false;
+
+    dates.forEach(function(d){
+      var dateStr = fmtDate(d);
+      var rows = [];
+      HOURS.forEach(function(hour){
+        var ids = monthData.slots[dateStr + "_" + hour] || [];
+        if(ids.length > 0){
+          var tipo = ids.length === 1 ? "Individual" : (ids.length === 2 ? "Doble" : "Triple");
+          rows.push([hour + ":00", ids.map(studentName).join(" + "), tipo]);
+        }
+      });
+      if(rows.length === 0) return;
+      any = true;
+      if(y > 700){ doc.addPage(); y = 40; }
+      doc.setFontSize(12);
+      doc.text(DOW_LONG[d.getDay()] + " " + d.getDate() + " de " + MONTH_NAMES[d.getMonth()], 40, y);
+      y += 8;
+      doc.autoTable({
+        startY: y,
+        head: [["Hora","Alumno(s)","Tipo"]],
+        body: rows,
+        margin: {left:40, right:40},
+        styles: {fontSize:9},
+        theme: "grid"
+      });
+      y = doc.lastAutoTable.finalY + 22;
+    });
+
+    if(!any){
+      doc.setFontSize(11);
+      doc.text("Sin horarios asignados este mes.", 40, y);
+    }
+
+    doc.addPage("a4", "landscape");
+    doc.setFontSize(14);
+    doc.text("Tabla de pagos - " + monthLabel, 40, 40);
+
+    var totals = computeTotals(monthKey);
+    var body = [];
+    var grandTotal = 0;
+    appData.students.forEach(function(s){
+      var t = totals[s.id] || {individual:0, doble:0, triple:0};
+      var totalHoras = t.individual + t.doble + t.triple;
+      var monto = t.individual*s.individual + t.doble*s.doble + t.triple*s.triple;
+      grandTotal += monto;
+      body.push([s.name, t.individual, t.doble, t.triple, totalHoras, formatMoney(monto)]);
+    });
+    body.push(["TOTAL","","","","", formatMoney(grandTotal)]);
+
+    doc.autoTable({
+      startY: 60,
+      head: [["Alumno","Horas individuales","Horas dobles","Horas triples","Total horas","Monto a pagar"]],
+      body: body,
+      margin: {left:40, right:40},
+      styles: {fontSize:10},
+      theme: "grid"
+    });
+
+    var pdfBlob = doc.output("blob");
+    shareOrDownloadFile(pdfBlob, "Horarios_" + monthKey + ".pdf", "application/pdf", "Horarios " + monthLabel);
+  });
+
+  // ---------- backup / restore ----------
+  document.getElementById("backupExport").addEventListener("click", function(){
+    var blob = new Blob([JSON.stringify(appData, null, 2)], {type:"application/json"});
+    var url = URL.createObjectURL(blob);
+    var a = document.createElement("a");
+    var today2 = new Date();
+    a.href = url;
+    a.download = "backup_horarios_" + fmtDate(today2) + ".json";
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  });
+
+  document.getElementById("backupImport").addEventListener("click", function(){
+    document.getElementById("fileImportInput").click();
+  });
+  document.getElementById("fileImportInput").addEventListener("change", function(e){
+    var file = e.target.files[0];
+    if(!file) return;
+    var reader = new FileReader();
+    reader.onload = function(){
+      try{
+        var parsed = JSON.parse(reader.result);
+        if(!parsed.students || !parsed.months) throw new Error("Formato inválido");
+        if(!confirm("Esto reemplazará los datos actuales por los de la copia de seguridad. ¿Continuar?")) return;
+        appData = parsed;
+        saveData();
+        renderAll();
+        alert("Copia de seguridad restaurada correctamente.");
+      }catch(err){
+        alert("No se pudo leer el archivo. Asegurate de que sea una copia de seguridad válida.");
+      }
+    };
+    reader.readAsText(file);
+    e.target.value = "";
+  });
+
+  // ---------- init ----------
+  renderAll();
+
+})();
+</script>
+
+<script>
+  // Registers the service worker so the app becomes installable ("Instalar app" /
+  // "Agregar a pantalla de inicio") and keeps working offline once installed.
+  // This only caches static app files — it never touches the schedule/payment data,
+  // which stays in localStorage on this device only.
+  if("serviceWorker" in navigator){
+    window.addEventListener("load", function(){
+      navigator.serviceWorker.register("service-worker.js").catch(function(){ /* ignore */ });
+    });
+  }
+</script>
+
+</body>
+</html>
