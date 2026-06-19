@@ -208,6 +208,8 @@
       <tbody id="studentsTableBody"></tbody>
     </table>
     <button class="btn btn-secondary" id="addStudentRowBtn">+ Agregar alumno</button>
+    <div class="link-toggle" id="toggleArchivedStudents" style="display:none;">Ver alumnos eliminados</div>
+    <div id="archivedStudentsBox" style="display:none;margin-top:6px;"></div>
     <div class="modal-actions">
       <button class="btn btn-primary" data-close="studentsModalOverlay">Listo</button>
     </div>
@@ -306,6 +308,15 @@
       });
     });
     return totals;
+  }
+  // Alumnos archivados (borrados) se ocultan para nuevos horarios, pero si tuvieron
+  // horas este mes siguen apareciendo en la tabla de pagos/exportaciones para no perder el historial.
+  function getPayableStudents(totals){
+    return appData.students.filter(function(s){
+      if(!s.archived) return true;
+      var t = totals[s.id];
+      return t && (t.individual + t.doble + t.triple) > 0;
+    });
   }
 
   // ---------- rendering: grid ----------
@@ -411,20 +422,21 @@
       '<th>Alumno</th><th>Horas individuales</th><th>Horas dobles</th><th>Horas triples</th><th>Total horas</th><th>Monto a pagar</th>' +
       '</tr></thead><tbody>';
 
-    appData.students.forEach(function(s){
+    getPayableStudents(totals).forEach(function(s){
       var t = totals[s.id] || {individual:0, doble:0, triple:0};
       var totalHoras = t.individual + t.doble + t.triple;
       var monto = t.individual*s.individual + t.doble*s.doble + t.triple*s.triple;
       grandTotal += monto;
       totalHorasMes += totalHoras;
-      html += '<tr><td>' + s.name + '</td><td>' + t.individual + '</td><td>' + t.doble + '</td><td>' + t.triple + '</td><td>' + totalHoras + '</td><td>' + formatMoney(monto) + '</td></tr>';
+      var nameLabel = escapeHtml(s.name) + (s.archived ? ' <em style="color:var(--muted);font-style:italic;">(eliminado)</em>' : '');
+      html += '<tr><td>' + nameLabel + '</td><td>' + t.individual + '</td><td>' + t.doble + '</td><td>' + t.triple + '</td><td>' + totalHoras + '</td><td>' + formatMoney(monto) + '</td></tr>';
     });
     html += '</tbody><tfoot><tr><td colspan="5">TOTAL</td><td>' + formatMoney(grandTotal) + '</td></tr></tfoot></table>';
     document.getElementById("paymentContainer").innerHTML = html;
 
     document.getElementById("statHoras").textContent = totalHorasMes;
     document.getElementById("statMonto").textContent = formatMoney(grandTotal);
-    document.getElementById("statAlumnos").textContent = appData.students.length;
+    document.getElementById("statAlumnos").textContent = appData.students.filter(function(s){ return !s.archived; }).length;
   }
 
   function renderMonthLabel(){
@@ -491,15 +503,19 @@
 
   function renderSlotStudentList(){
     var html = "";
-    appData.students.forEach(function(s){
+    var visibleStudents = appData.students.filter(function(s){
+      return !s.archived || currentEditSelection.indexOf(s.id) !== -1;
+    });
+    visibleStudents.forEach(function(s){
       var checked = currentEditSelection.indexOf(s.id) !== -1 ? "checked" : "";
+      var archivedNote = s.archived ? ' <em style="color:var(--muted);">(eliminado)</em>' : '';
       html += '<div class="student-check-row">' +
         '<input type="checkbox" data-id="' + s.id + '" ' + checked + '>' +
-        '<label data-id-label="' + s.id + '">' + s.name + '</label>' +
+        '<label data-id-label="' + s.id + '">' + escapeHtml(s.name) + archivedNote + '</label>' +
         '<span class="rates">Ind $' + s.individual + ' · Dob $' + s.doble + ' · Tri $' + s.triple + '</span>' +
         '</div>';
     });
-    if(appData.students.length === 0){
+    if(visibleStudents.length === 0){
       html = '<div class="hint">No hay alumnos cargados todavía. Agregá uno abajo.</div>';
     }
     var container = document.getElementById("slotStudentList");
@@ -551,6 +567,7 @@
     delete monthData.slots[currentEditDate + "_" + currentEditHour];
     saveData();
     renderGrid();
+    renderDayView();
     renderPaymentTable();
     slotOverlay.classList.remove("open");
   });
@@ -567,6 +584,7 @@
     }
     saveData();
     renderGrid();
+    renderDayView();
     renderPaymentTable();
     slotOverlay.classList.remove("open");
   });
@@ -581,7 +599,8 @@
   function renderStudentsTable(){
     var tbody = document.getElementById("studentsTableBody");
     tbody.innerHTML = "";
-    appData.students.forEach(function(s){
+    var active = appData.students.filter(function(s){ return !s.archived; });
+    active.forEach(function(s){
       var tr = document.createElement("tr");
       tr.innerHTML =
         '<td><input class="name" type="text" value="' + escapeHtml(s.name) + '"></td>' +
@@ -590,20 +609,55 @@
         '<td><input class="rate" type="number" value="' + s.triple + '"></td>' +
         '<td><button class="del-btn">Eliminar</button></td>';
       var inputs = tr.querySelectorAll("input");
-      inputs[0].addEventListener("input", function(){ s.name = inputs[0].value; saveData(); renderGrid(); renderPaymentTable(); });
+      inputs[0].addEventListener("input", function(){ s.name = inputs[0].value; saveData(); renderGrid(); renderDayView(); renderPaymentTable(); });
       inputs[1].addEventListener("input", function(){ s.individual = parseFloat(inputs[1].value)||0; saveData(); renderPaymentTable(); });
       inputs[2].addEventListener("input", function(){ s.doble = parseFloat(inputs[2].value)||0; saveData(); renderPaymentTable(); });
       inputs[3].addEventListener("input", function(){ s.triple = parseFloat(inputs[3].value)||0; saveData(); renderPaymentTable(); });
       tr.querySelector(".del-btn").addEventListener("click", function(){
-        if(confirm("¿Eliminar a " + s.name + "? Los horarios ya asignados a este alumno quedarán sin nombre.")){
-          appData.students = appData.students.filter(function(x){ return x.id !== s.id; });
+        if(confirm("¿Eliminar a " + s.name + "? Ya no vas a poder asignarle nuevos horarios, pero los horarios y pagos ya registrados se mantienen sin cambios. Podés restaurarlo después desde \"Ver alumnos eliminados\".")){
+          s.archived = true;
           saveData();
           renderStudentsTable();
           renderGrid();
+          renderDayView();
           renderPaymentTable();
         }
       });
       tbody.appendChild(tr);
+    });
+
+    renderArchivedStudents();
+  }
+
+  function renderArchivedStudents(){
+    var archived = appData.students.filter(function(s){ return s.archived; });
+    var toggle = document.getElementById("toggleArchivedStudents");
+    var box = document.getElementById("archivedStudentsBox");
+    if(archived.length === 0){
+      toggle.style.display = "none";
+      box.style.display = "none";
+      box.innerHTML = "";
+      return;
+    }
+    toggle.style.display = "inline-block";
+    toggle.textContent = box.style.display === "block" ? "Ocultar alumnos eliminados (" + archived.length + ")" : "Ver alumnos eliminados (" + archived.length + ")";
+    var html = "";
+    archived.forEach(function(s){
+      html += '<div class="student-check-row"><label style="flex:1;">' + escapeHtml(s.name) + '</label>' +
+        '<button class="btn btn-secondary restore-btn" data-id="' + s.id + '" style="padding:4px 10px;font-size:12px;">Restaurar</button></div>';
+    });
+    box.innerHTML = html;
+    box.querySelectorAll(".restore-btn").forEach(function(btn){
+      btn.addEventListener("click", function(){
+        var id = btn.getAttribute("data-id");
+        var s = getStudent(id);
+        if(s){
+          s.archived = false;
+          saveData();
+          renderStudentsTable();
+          renderPaymentTable();
+        }
+      });
     });
   }
 
@@ -618,6 +672,12 @@
     saveData();
     renderStudentsTable();
     renderPaymentTable();
+  });
+
+  document.getElementById("toggleArchivedStudents").addEventListener("click", function(){
+    var box = document.getElementById("archivedStudentsBox");
+    box.style.display = box.style.display === "block" ? "none" : "block";
+    renderArchivedStudents();
   });
 
   // ---------- modal close ----------
@@ -682,7 +742,7 @@
     var totals = computeTotals(monthKey);
     var rows = [["Alumno","Horas individuales","Horas dobles","Horas triples","Total horas","Tarifa individual","Tarifa doble","Tarifa triple","Monto a pagar"]];
     var grandTotal = 0;
-    appData.students.forEach(function(s){
+    getPayableStudents(totals).forEach(function(s){
       var t = totals[s.id] || {individual:0, doble:0, triple:0};
       var totalHoras = t.individual + t.doble + t.triple;
       var monto = t.individual*s.individual + t.doble*s.doble + t.triple*s.triple;
@@ -767,7 +827,7 @@
     var totals = computeTotals(monthKey);
     var body = [];
     var grandTotal = 0;
-    appData.students.forEach(function(s){
+    getPayableStudents(totals).forEach(function(s){
       var t = totals[s.id] || {individual:0, doble:0, triple:0};
       var totalHoras = t.individual + t.doble + t.triple;
       var monto = t.individual*s.individual + t.doble*s.doble + t.triple*s.triple;
